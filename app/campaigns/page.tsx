@@ -62,6 +62,12 @@ export default async function CampaignsPage() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Link
+                href="/settings"
+                className="text-sm font-medium text-gray-700 hover:text-gray-900"
+              >
+                Settings
+              </Link>
               <span className="text-sm text-gray-700">
                 {user?.firstName || user?.emailAddresses[0]?.emailAddress}
               </span>

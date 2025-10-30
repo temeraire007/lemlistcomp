@@ -10,6 +10,7 @@ export type CampaignStatus = 'draft' | 'active' | 'paused' | 'completed'
 export type TemplateStatus = 'draft' | 'active' | 'archived'
 export type EmailDirection = 'outbound' | 'inbound'
 export type LeadStatus = 'lead' | 'scheduled' | 'sent' | 'opened' | 'replied' | 'won' | 'lost'
+export type EmailProvider = 'gmail' | 'outlook'
 
 export interface Database {
   public: {
@@ -212,6 +213,74 @@ export interface Database {
           text_body?: string | null
           sent_at?: string | null
           headers?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      email_accounts: {
+        Row: {
+          id: string
+          user_id: string
+          provider: EmailProvider
+          email: string
+          access_token: string
+          refresh_token: string | null
+          token_expiry: string | null
+          account_name: string | null
+          is_primary: boolean
+          is_active: boolean
+          track_opens: boolean
+          track_clicks: boolean
+          track_replies: boolean
+          last_sync_at: string | null
+          sync_enabled: boolean
+          daily_send_limit: number
+          emails_sent_today: number
+          last_reset_date: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          provider: EmailProvider
+          email: string
+          access_token: string
+          refresh_token?: string | null
+          token_expiry?: string | null
+          account_name?: string | null
+          is_primary?: boolean
+          is_active?: boolean
+          track_opens?: boolean
+          track_clicks?: boolean
+          track_replies?: boolean
+          last_sync_at?: string | null
+          sync_enabled?: boolean
+          daily_send_limit?: number
+          emails_sent_today?: number
+          last_reset_date?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          provider?: EmailProvider
+          email?: string
+          access_token?: string
+          refresh_token?: string | null
+          token_expiry?: string | null
+          account_name?: string | null
+          is_primary?: boolean
+          is_active?: boolean
+          track_opens?: boolean
+          track_clicks?: boolean
+          track_replies?: boolean
+          last_sync_at?: string | null
+          sync_enabled?: boolean
+          daily_send_limit?: number
+          emails_sent_today?: number
+          last_reset_date?: string
           created_at?: string
           updated_at?: string
         }
