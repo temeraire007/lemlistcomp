@@ -23,6 +23,7 @@ Best regards,
 {{senderName}}`)
 
   const [showVariableMenu, setShowVariableMenu] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
   const variables = [
     { name: 'firstName', description: 'Recipient first name' },
@@ -53,10 +54,52 @@ Best regards,
     document.execCommand(command, false, value)
   }
 
-  const handleSave = () => {
-    // TODO: Add API call to save template
-    console.log('Saving template:', { subject, content })
-    alert('Template saved successfully!')
+  const handleSave = async () => {
+    console.log('💾 [Template] Starting save process...')
+    console.log('💾 [Template] Campaign ID:', campaignId)
+    console.log('💾 [Template] Subject:', subject)
+    console.log('💾 [Template] Content length:', content.length)
+    
+    setSaveStatus('saving')
+    
+    try {
+      console.log('📤 [Template] Calling API...')
+      const response = await fetch(`/api/campaigns/${campaignId}/template`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: 'Campaign Template',
+          subject,
+          content,
+          preview_text: subject,
+        }),
+      })
+
+      console.log('📥 [Template] API response status:', response.status)
+
+      if (!response.ok) {
+        const error = await response.json()
+        console.error('❌ [Template] API error:', error)
+        throw new Error(error.error || 'Failed to save template')
+      }
+
+      const data = await response.json()
+      console.log('✅ [Template] Template saved successfully!')
+      console.log('📊 [Template] Response data:', data)
+      
+      setSaveStatus('saved')
+      
+      // Reset to idle after 3 seconds
+      setTimeout(() => {
+        setSaveStatus('idle')
+      }, 3000)
+    } catch (error) {
+      console.error('❌ [Template] Error saving template:', error)
+      setSaveStatus('idle')
+      alert(error instanceof Error ? error.message : 'Failed to save template')
+    }
   }
 
   return (
@@ -111,28 +154,59 @@ Best regards,
             </div>
             <button
               onClick={handleSave}
-              className="inline-flex items-center rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+              disabled={saveStatus === 'saving'}
+              className={`inline-flex items-center rounded-md px-4 py-2 text-sm font-semibold text-white shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors ${
+                saveStatus === 'saved' 
+                  ? 'bg-green-600 hover:bg-green-500 focus-visible:outline-green-600' 
+                  : 'bg-blue-700 hover:bg-blue-600 focus-visible:outline-blue-700'
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              <svg
-                className="h-5 w-5 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9"
-                />
-              </svg>
-              Save Template
+              {saveStatus === 'saving' ? (
+                <>
+                  <div className="inline-block h-4 w-4 mr-2 animate-spin rounded-full border-2 border-solid border-white border-r-transparent"></div>
+                  Saving...
+                </>
+              ) : saveStatus === 'saved' ? (
+                <>
+                  <svg
+                    className="h-5 w-5 mr-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="2"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                  Saved!
+                </>
+              ) : (
+                <>
+                  <svg
+                    className="h-5 w-5 mr-2"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M16.5 3.75V16.5L12 14.25 7.5 16.5V3.75m9 0H18A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6A2.25 2.25 0 016 3.75h1.5m9 0h-9"
+                    />
+                  </svg>
+                  Save Template
+                </>
+              )}
             </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
             {/* Subject Line */}
             <div className="bg-white shadow rounded-lg p-6">
               <label htmlFor="subject" className="block text-sm font-medium text-gray-900 mb-2">
@@ -283,18 +357,15 @@ Best regards,
                 />
               </div>
             </div>
-          </div>
 
-          {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Preview */}
-            <div className="bg-white shadow rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Preview</h3>
-              <div className="border border-gray-200 rounded-lg p-4 text-sm">
-                <div className="font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-200">
+            {/* Preview - Below Editor */}
+            <div className="bg-white shadow rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Preview</h3>
+              <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
+                <div className="font-semibold text-gray-900 mb-3 pb-3 border-b border-gray-300 text-base">
                   {subject}
                 </div>
-                <div className="text-gray-700 whitespace-pre-wrap text-xs leading-relaxed">
+                <div className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">
                   {content.replace(/\{\{(\w+)\}\}/g, (match, p1) => {
                     const examples: Record<string, string> = {
                       firstName: 'John',
@@ -309,6 +380,10 @@ Best regards,
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="lg:col-span-1 space-y-6">
 
             {/* Tips */}
             <div className="bg-blue-50 rounded-lg p-4">

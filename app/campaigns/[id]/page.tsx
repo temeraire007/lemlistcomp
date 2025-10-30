@@ -2,39 +2,207 @@ import { UserButton } from '@clerk/nextjs'
 import { currentUser } from '@clerk/nextjs/server'
 import Link from 'next/link'
 
-// Mock data for activities - replace with real data later
-const recentActivities = [
-  {
-    id: 1,
-    type: 'sent',
-    email: 'john.doe@example.com',
-    timestamp: '2 minutes ago',
-  },
-  {
-    id: 2,
-    type: 'opened',
-    email: 'jane.smith@example.com',
-    timestamp: '15 minutes ago',
-  },
-  {
-    id: 3,
-    type: 'answered',
-    email: 'mike.johnson@example.com',
-    timestamp: '1 hour ago',
-  },
-  {
-    id: 4,
-    type: 'sent',
-    email: 'sarah.williams@example.com',
-    timestamp: '2 hours ago',
-  },
-  {
-    id: 5,
-    type: 'opened',
-    email: 'david.brown@example.com',
-    timestamp: '3 hours ago',
-  },
-]
+interface Activity {
+  id: string
+  type: 'sent' | 'opened' | 'answered'
+  email: string
+  timestamp: string
+}
+
+interface CampaignStats {
+  sent: number
+  opened: number
+  answered: number
+  scheduled: number
+  unscheduled: number
+}
+
+interface Campaign {
+  id: string
+  name: string
+}
+
+import { createClient } from '@/lib/supabase/server'
+
+async function getCampaignStats(campaignId: string, userId: string): Promise<{ campaign: Campaign; stats: CampaignStats } | null> {
+  console.log('\n📊 [Dashboard] ========== FETCH STATS ==========')
+  console.log('📊 [Dashboard] Campaign ID:', campaignId)
+  console.log('📊 [Dashboard] User ID:', userId)
+  
+  try {
+    const supabase = await createClient()
+
+    // Get the Supabase user ID
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('clerk_user_id', userId)
+      .single()
+
+    if (userError || !user) {
+      console.error('❌ [Dashboard] User not found:', userError)
+      return null
+    }
+    console.log('✅ [Dashboard] User found:', user.id)
+
+    // Get campaign
+    const { data: campaign, error: campaignError } = await supabase
+      .from('campaigns')
+      .select('id, name')
+      .eq('id', campaignId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (campaignError || !campaign) {
+      console.error('❌ [Dashboard] Campaign not found:', campaignError)
+      return null
+    }
+    console.log('✅ [Dashboard] Campaign found:', campaign.name)
+
+    // Get all leads for stats
+    const { data: leads, error: leadsError } = await supabase
+      .from('leads')
+      .select('status')
+      .eq('campaign_id', campaignId)
+      .eq('user_id', user.id)
+
+    if (leadsError) {
+      console.error('❌ [Dashboard] Error fetching leads:', leadsError)
+      return null
+    }
+
+    console.log('📊 [Dashboard] Total leads:', leads?.length || 0)
+
+    // Calculate stats
+    const stats = {
+      sent: 0,
+      opened: 0,
+      answered: 0,
+      scheduled: 0,
+      unscheduled: 0,
+    }
+
+    leads?.forEach((lead) => {
+      switch (lead.status) {
+        case 'sent':
+          stats.sent++
+          break
+        case 'opened':
+          stats.sent++
+          stats.opened++
+          break
+        case 'replied':
+          stats.sent++
+          stats.opened++
+          stats.answered++
+          break
+        case 'scheduled':
+          stats.scheduled++
+          break
+        case 'lead':
+          stats.unscheduled++
+          break
+      }
+    })
+
+    console.log('📊 [Dashboard] Stats calculated:', stats)
+    console.log('🎉 [Dashboard] ========== STATS COMPLETE ==========\n')
+    
+    return { campaign, stats }
+  } catch (error) {
+    console.error('❌ [Dashboard] Error fetching stats:', error)
+    return null
+  }
+}
+
+async function getCampaignActivities(campaignId: string, userId: string): Promise<Activity[]> {
+  console.log('\n📋 [Dashboard] ========== FETCH ACTIVITIES ==========')
+  console.log('📋 [Dashboard] Campaign ID:', campaignId)
+  console.log('📋 [Dashboard] User ID:', userId)
+  
+  try {
+    const supabase = await createClient()
+
+    // Get the Supabase user ID
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('clerk_user_id', userId)
+      .single()
+
+    if (userError || !user) {
+      console.error('❌ [Dashboard] User not found:', userError)
+      return []
+    }
+    console.log('✅ [Dashboard] User found:', user.id)
+
+    // Get recent messages
+    const { data: messages, error: messagesError } = await supabase
+      .from('email_messages')
+      .select(`
+        id,
+        direction,
+        sent_at,
+        lead_id,
+        leads!inner(
+          email,
+          first_name,
+          last_name,
+          campaign_id
+        )
+      `)
+      .eq('user_id', user.id)
+      .eq('leads.campaign_id', campaignId)
+      .order('sent_at', { ascending: false })
+      .limit(10)
+
+    if (messagesError) {
+      console.error('❌ [Dashboard] Error fetching messages:', messagesError)
+      return []
+    }
+
+    console.log('📋 [Dashboard] Messages found:', messages?.length || 0)
+
+    // Transform to activities
+    const activities = messages?.map((message: any) => {
+      const lead = message.leads
+      const email = lead.email
+      
+      const sentAt = new Date(message.sent_at)
+      const now = new Date()
+      const diffMs = now.getTime() - sentAt.getTime()
+      const diffMins = Math.floor(diffMs / 60000)
+      const diffHours = Math.floor(diffMs / 3600000)
+      const diffDays = Math.floor(diffMs / 86400000)
+      
+      let timestamp = ''
+      if (diffMins < 1) {
+        timestamp = 'Just now'
+      } else if (diffMins < 60) {
+        timestamp = `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`
+      } else if (diffHours < 24) {
+        timestamp = `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`
+      } else {
+        timestamp = `${diffDays} day${diffDays > 1 ? 's' : ''} ago`
+      }
+
+      return {
+        id: message.id,
+        type: message.direction === 'outbound' ? 'sent' : 'answered',
+        email,
+        timestamp,
+      } as Activity
+    }) || []
+
+    console.log('📋 [Dashboard] Activities transformed:', activities.length)
+    console.log('🎉 [Dashboard] ========== ACTIVITIES COMPLETE ==========\n')
+    
+    return activities
+  } catch (error) {
+    console.error('❌ [Dashboard] Error fetching activities:', error)
+    return []
+  }
+}
 
 const getActivityIcon = (type: string) => {
   switch (type) {
@@ -80,20 +248,30 @@ const getActivityText = (type: string) => {
   }
 }
 
-export default async function CampaignDetailsPage({ params }: { params: { id: string } }) {
+export default async function CampaignDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await currentUser()
-  const campaignId = params.id
+  const { id: campaignId } = await params
 
-  // Mock campaign data - replace with real data later
-  const campaign = {
-    id: campaignId,
-    name: 'Product Launch Campaign',
+  if (!user?.id) {
+    return <div>Unauthorized</div>
+  }
+
+  // Fetch campaign data directly from database
+  const campaignData = await getCampaignStats(campaignId, user.id)
+  const recentActivities = await getCampaignActivities(campaignId, user.id)
+
+  // Fallback data if fetch fails
+  const campaign = campaignData || {
+    campaign: {
+      id: campaignId,
+      name: 'Campaign'
+    },
     stats: {
-      sent: 180,
-      opened: 85,
-      answered: 23,
-      scheduled: 50,
-      unscheduled: 20,
+      sent: 0,
+      opened: 0,
+      answered: 0,
+      scheduled: 0,
+      unscheduled: 0,
     }
   }
 
@@ -142,7 +320,7 @@ export default async function CampaignDetailsPage({ params }: { params: { id: st
           </Link>
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">{campaign.name}</h1>
+              <h1 className="text-3xl font-bold text-gray-900">{campaign.campaign.name}</h1>
               <p className="mt-2 text-sm text-gray-600">
                 Campaign overview and performance metrics
               </p>

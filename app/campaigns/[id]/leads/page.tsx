@@ -5,47 +5,71 @@ import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
+import type { LeadStatus } from '@/lib/supabase/types'
 
 interface Lead {
-  id: number
-  firstName: string
-  lastName: string
-  company: string
+  id: string
+  first_name: string | null
+  last_name: string | null
+  company: string | null
   email: string
+  status: LeadStatus
+  notes: string | null
+  tags: string[] | null
 }
-
-// Mock data for leads
-const initialLeads: Lead[] = [
-  { id: 1, firstName: 'John', lastName: 'Doe', company: 'Acme Corp', email: 'john.doe@acme.com' },
-  { id: 2, firstName: 'Jane', lastName: 'Smith', company: 'Tech Solutions', email: 'jane.smith@techsolutions.com' },
-  { id: 3, firstName: 'Mike', lastName: 'Johnson', company: 'Innovation Labs', email: 'mike.j@innovationlabs.com' },
-  { id: 4, firstName: 'Sarah', lastName: 'Williams', company: 'Digital Ventures', email: 'sarah.w@digitalventures.com' },
-  { id: 5, firstName: 'David', lastName: 'Brown', company: 'StartUp Inc', email: 'david.brown@startupinc.com' },
-  { id: 6, firstName: 'Emily', lastName: 'Davis', company: 'Global Enterprises', email: 'emily.davis@globalent.com' },
-  { id: 7, firstName: 'Robert', lastName: 'Wilson', company: 'Future Systems', email: 'robert.w@futuresystems.com' },
-  { id: 8, firstName: 'Lisa', lastName: 'Anderson', company: 'Cloud Services', email: 'lisa.a@cloudservices.com' },
-  { id: 9, firstName: 'James', lastName: 'Taylor', company: 'Data Dynamics', email: 'james.taylor@datadynamics.com' },
-  { id: 10, firstName: 'Maria', lastName: 'Garcia', company: 'Web Solutions', email: 'maria.g@websolutions.com' },
-]
 
 export default function LeadsPage() {
   const { user } = useUser()
   const params = useParams()
-  const campaignId = params.id
+  const campaignId = params?.id as string | undefined
 
-  const [leads, setLeads] = useState<Lead[]>(initialLeads)
-  const [filteredLeads, setFilteredLeads] = useState<Lead[]>(initialLeads)
-  const [selectedLeads, setSelectedLeads] = useState<number[]>([])
-  const [editingCell, setEditingCell] = useState<{ id: number; field: keyof Lead } | null>(null)
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([])
+  const [selectedLeads, setSelectedLeads] = useState<string[]>([])
+  const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Lead } | null>(null)
   const [editValue, setEditValue] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
-  const [newLead, setNewLead] = useState<Omit<Lead, 'id'>>({
-    firstName: '',
-    lastName: '',
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [newLead, setNewLead] = useState({
+    first_name: '',
+    last_name: '',
     company: '',
     email: '',
   })
+
+  // Fetch leads from database
+  useEffect(() => {
+    if (!campaignId) {
+      setError('Campaign ID not found')
+      setIsLoading(false)
+      return
+    }
+    
+    const fetchLeads = async () => {
+      console.log('📥 [Leads] Fetching leads for campaign:', campaignId)
+      setIsLoading(true)
+      setError(null)
+      try {
+        const response = await fetch(`/api/leads?campaign_id=${campaignId}`)
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Failed to fetch leads')
+        }
+        const data = await response.json()
+        console.log('✅ [Leads] Fetched leads:', data.leads?.length || 0)
+        setLeads(data.leads || [])
+      } catch (error) {
+        console.error('❌ [Leads] Error fetching leads:', error)
+        setError(error instanceof Error ? error.message : 'Failed to load leads')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchLeads()
+  }, [campaignId])
 
   // Filter leads based on search term
   useEffect(() => {
@@ -53,9 +77,9 @@ export default function LeadsPage() {
       setFilteredLeads(leads)
     } else {
       const filtered = leads.filter(lead =>
-        lead.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        lead.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (lead.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
+        (lead.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
+        (lead.company?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
         lead.email.toLowerCase().includes(searchTerm.toLowerCase())
       )
       setFilteredLeads(filtered)
@@ -70,7 +94,7 @@ export default function LeadsPage() {
     }
   }
 
-  const handleSelectLead = (id: number, checked: boolean) => {
+  const handleSelectLead = (id: string, checked: boolean) => {
     if (checked) {
       setSelectedLeads([...selectedLeads, id])
     } else {
@@ -78,29 +102,69 @@ export default function LeadsPage() {
     }
   }
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedLeads.length === 0) return
-    if (confirm(`Are you sure you want to delete ${selectedLeads.length} lead(s)?`)) {
+    if (!confirm(`Are you sure you want to delete ${selectedLeads.length} lead(s)?`)) return
+
+    console.log('🗑️ [Leads] Deleting leads:', selectedLeads)
+    setError(null)
+    try {
+      await Promise.all(
+        selectedLeads.map(id =>
+          fetch(`/api/leads/${id}`, { method: 'DELETE' })
+        )
+      )
+      console.log('✅ [Leads] Leads deleted successfully')
+      // Refresh leads list
       setLeads(leads.filter(lead => !selectedLeads.includes(lead.id)))
       setSelectedLeads([])
+    } catch (error) {
+      console.error('❌ [Leads] Error deleting leads:', error)
+      setError('Failed to delete leads. Please try again.')
     }
   }
 
-  const handleDoubleClick = (id: number, field: keyof Lead, currentValue: string) => {
-    if (field === 'id') return // Don't allow editing ID
+  const handleDoubleClick = (id: string, field: keyof Lead, currentValue: string | null) => {
+    if (field === 'id' || field === 'status' || field === 'notes' || field === 'tags') return // Don't allow editing these inline
     setEditingCell({ id, field })
-    setEditValue(currentValue)
+    setEditValue(currentValue || '')
   }
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingCell) return
-    setLeads(leads.map(lead =>
-      lead.id === editingCell.id
-        ? { ...lead, [editingCell.field]: editValue }
-        : lead
-    ))
-    setEditingCell(null)
-    setEditValue('')
+    
+    console.log('✏️ [Leads] Updating lead:', editingCell.id, editingCell.field, editValue)
+    setError(null)
+    try {
+      const response = await fetch(`/api/leads/${editingCell.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          [editingCell.field]: editValue || null,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update lead')
+      }
+
+      const data = await response.json()
+      console.log('✅ [Leads] Lead updated:', data.lead)
+      
+      // Update local state
+      setLeads(leads.map(lead =>
+        lead.id === editingCell.id ? data.lead : lead
+      ))
+      setEditingCell(null)
+      setEditValue('')
+    } catch (error) {
+      console.error('❌ [Leads] Error updating lead:', error)
+      setError('Failed to update lead. Please try again.')
+      setEditingCell(null)
+      setEditValue('')
+    }
   }
 
   const handleCancelEdit = () => {
@@ -116,15 +180,42 @@ export default function LeadsPage() {
     }
   }
 
-  const handleAddLead = () => {
-    if (!newLead.firstName || !newLead.lastName || !newLead.email) {
-      alert('Please fill in all required fields')
+  const handleAddLead = async () => {
+    if (!newLead.email) {
+      setError('Email is required')
       return
     }
-    const newId = Math.max(...leads.map(l => l.id)) + 1
-    setLeads([...leads, { ...newLead, id: newId }])
-    setNewLead({ firstName: '', lastName: '', company: '', email: '' })
-    setShowAddModal(false)
+
+    console.log('➕ [Leads] Adding new lead:', newLead)
+    setError(null)
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          campaign_id: campaignId,
+          ...newLead,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to add lead')
+      }
+
+      const data = await response.json()
+      console.log('✅ [Leads] Lead added:', data.lead)
+      
+      // Add to local state
+      setLeads([data.lead, ...leads])
+      setNewLead({ first_name: '', last_name: '', company: '', email: '' })
+      setShowAddModal(false)
+    } catch (error) {
+      console.error('❌ [Leads] Error adding lead:', error)
+      setError(error instanceof Error ? error.message : 'Failed to add lead')
+    }
   }
 
   return (
@@ -199,6 +290,41 @@ export default function LeadsPage() {
           </div>
         </div>
 
+        {/* Error Banner */}
+        {error && (
+          <div className="mb-6 rounded-md bg-red-50 p-4 border border-red-200">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg
+                  className="h-5 w-5 text-red-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div className="ml-3 flex-1">
+                <p className="text-sm font-medium text-red-800">{error}</p>
+              </div>
+              <div className="ml-auto pl-3">
+                <button
+                  onClick={() => setError(null)}
+                  className="inline-flex rounded-md bg-red-50 p-1.5 text-red-500 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-600 focus:ring-offset-2 focus:ring-offset-red-50"
+                >
+                  <span className="sr-only">Dismiss</span>
+                  <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Toolbar */}
         <div className="mb-4 flex items-center justify-between gap-4">
           <div className="flex-1 max-w-md">
@@ -253,34 +379,46 @@ export default function LeadsPage() {
 
         {/* Table */}
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th scope="col" className="w-12 px-6 py-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedLeads.length === filteredLeads.length && filteredLeads.length > 0}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="h-4 w-4 rounded border-gray-300 text-blue-700 focus:ring-blue-700"
-                    />
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    First Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Name
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Company
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredLeads.map((lead) => (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-700 border-r-transparent"></div>
+                <p className="mt-2 text-sm text-gray-500">Loading leads...</p>
+              </div>
+            </div>
+          ) : filteredLeads.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No leads found. Add your first lead to get started!</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="w-12 px-6 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedLeads.length === filteredLeads.length && filteredLeads.length > 0}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-300 text-blue-700 focus:ring-blue-700"
+                      />
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      First Name
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Name
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Company
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Email
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {filteredLeads.map((lead) => (
                   <tr
                     key={lead.id}
                     className={`hover:bg-gray-50 ${selectedLeads.includes(lead.id) ? 'bg-blue-50' : ''}`}
@@ -295,9 +433,9 @@ export default function LeadsPage() {
                     </td>
                     <td
                       className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 cursor-pointer"
-                      onDoubleClick={() => handleDoubleClick(lead.id, 'firstName', lead.firstName)}
+                      onDoubleClick={() => handleDoubleClick(lead.id, 'first_name', lead.first_name)}
                     >
-                      {editingCell?.id === lead.id && editingCell?.field === 'firstName' ? (
+                      {editingCell?.id === lead.id && editingCell?.field === 'first_name' ? (
                         <input
                           type="text"
                           value={editValue}
@@ -308,14 +446,14 @@ export default function LeadsPage() {
                           className="w-full rounded border-blue-700 border-2 px-2 py-1 text-sm focus:outline-none"
                         />
                       ) : (
-                        lead.firstName
+                        lead.first_name || '-'
                       )}
                     </td>
                     <td
                       className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 cursor-pointer"
-                      onDoubleClick={() => handleDoubleClick(lead.id, 'lastName', lead.lastName)}
+                      onDoubleClick={() => handleDoubleClick(lead.id, 'last_name', lead.last_name)}
                     >
-                      {editingCell?.id === lead.id && editingCell?.field === 'lastName' ? (
+                      {editingCell?.id === lead.id && editingCell?.field === 'last_name' ? (
                         <input
                           type="text"
                           value={editValue}
@@ -326,7 +464,7 @@ export default function LeadsPage() {
                           className="w-full rounded border-blue-700 border-2 px-2 py-1 text-sm focus:outline-none"
                         />
                       ) : (
-                        lead.lastName
+                        lead.last_name || '-'
                       )}
                     </td>
                     <td
@@ -344,7 +482,7 @@ export default function LeadsPage() {
                           className="w-full rounded border-blue-700 border-2 px-2 py-1 text-sm focus:outline-none"
                         />
                       ) : (
-                        lead.company
+                        lead.company || '-'
                       )}
                     </td>
                     <td
@@ -366,30 +504,9 @@ export default function LeadsPage() {
                       )}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredLeads.length === 0 && (
-            <div className="text-center py-12">
-              <svg
-                className="mx-auto h-12 w-12 text-gray-400"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="1.5"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-                />
-              </svg>
-              <h3 className="mt-2 text-sm font-semibold text-gray-900">No leads found</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                {searchTerm ? 'Try adjusting your search terms' : 'Get started by adding a new lead'}
-              </p>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -437,26 +554,26 @@ export default function LeadsPage() {
             <div className="px-6 py-4 space-y-4">
               <div>
                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
-                  First Name <span className="text-red-500">*</span>
+                  First Name
                 </label>
                 <input
                   type="text"
                   id="firstName"
-                  value={newLead.firstName}
-                  onChange={(e) => setNewLead({ ...newLead, firstName: e.target.value })}
+                  value={newLead.first_name}
+                  onChange={(e) => setNewLead({ ...newLead, first_name: e.target.value })}
                   className="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-700 sm:text-sm sm:leading-6"
                   placeholder="John"
                 />
               </div>
               <div>
                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
-                  Last Name <span className="text-red-500">*</span>
+                  Last Name
                 </label>
                 <input
                   type="text"
                   id="lastName"
-                  value={newLead.lastName}
-                  onChange={(e) => setNewLead({ ...newLead, lastName: e.target.value })}
+                  value={newLead.last_name}
+                  onChange={(e) => setNewLead({ ...newLead, last_name: e.target.value })}
                   className="block w-full rounded-md border-0 py-2 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-700 sm:text-sm sm:leading-6"
                   placeholder="Doe"
                 />
@@ -492,7 +609,7 @@ export default function LeadsPage() {
               <button
                 onClick={() => {
                   setShowAddModal(false)
-                  setNewLead({ firstName: '', lastName: '', company: '', email: '' })
+                  setNewLead({ first_name: '', last_name: '', company: '', email: '' })
                 }}
                 className="inline-flex items-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
               >
