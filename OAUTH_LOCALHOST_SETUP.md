@@ -69,9 +69,6 @@ Add these to your `.env.local` file:
 
 ```env
 # Gmail OAuth (you already have these)
-GMAIL_***REMOVED***
-GMAIL_***REMOVED***
-GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/gmail/callback
 ```
 
 **Note:** You already have Gmail credentials in the guide. Make sure these match your Google Cloud Console credentials!

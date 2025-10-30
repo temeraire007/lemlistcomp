@@ -142,9 +142,6 @@ Set an account as the primary sending account.
 
 3. **Environment Variables:**
    ```env
-   GMAIL_***REMOVED***
-   GMAIL_***REMOVED***
-   GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/gmail/callback
    ```
 
 4. **Implementation Steps:** ✅ **COMPLETED**
