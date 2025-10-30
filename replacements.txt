@@ -1,0 +1,10 @@
+# Google OAuth client id / secret in many formats (JSON, YAML, MD, code)
+regex:(?i)(["']?\s*client[_-]?id\s*["']?\s*[:=]\s*["']?\s*)([^"'\s]+)(["']?)
+\1***REDACTED***\3
+regex:(?i)(["']?\s*client[_-]?secret\s*["']?\s*[:=]\s*["']?\s*)([^"'\s]+)(["']?)
+\1***REDACTED***\3
+# Common env-style
+regex:(?i)^(CLIENT[_-]?ID\s*=\s*).*
+\1***REDACTED***
+regex:(?i)^(CLIENT[_-]?SECRET\s*=\s*).*
+\1***REDACTED***
